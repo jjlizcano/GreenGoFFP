@@ -145,7 +145,8 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
     setState(() {
       final pedido = pedidosSimulados.firstWhere((p) => p.id == id);
       pedido.isDelivered = !pedido.isDelivered;
-      pedido.horaEntrega = pedido.isDelivered ? DateTime.now() : null;
+      // Esto es crucial para el ordenamiento de entregados
+      pedido.horaEntrega = pedido.isDelivered ? DateTime.now() : null; 
       
       if (pedidosSimulados.every((p) => p.isDelivered)) {
         _showCelebration = true;
@@ -178,18 +179,30 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    // Lógica de ordenamiento dinámica
+    // LÓGICA DE ORDENAMIENTO CORREGIDA PARA EL MAPA
     final sortedPedidos = [...pedidosSimulados];
     sortedPedidos.sort((a, b) {
+      // Prioridad 1: Los pedidos PENDIENTES van primero.
       if (a.isDelivered != b.isDelivered) {
-        return a.isDelivered ? 1 : -1;
+        return a.isDelivered ? 1 : -1; // Pendiente (-1) va antes que Entregado (1)
       }
+
+      // Prioridad 2: Si AMBOS están completados, ordenarlos por hora de entrega (el más antiguo va primero).
+      if (a.isDelivered && b.isDelivered) {
+        // Usamos '!' ya que ambos están 'isDelivered' y 'horaEntrega' no será nulo
+        return a.horaEntrega!.compareTo(b.horaEntrega!); 
+      }
+
+      // Prioridad 3: Si AMBOS están pendientes, usar el modo de ordenamiento seleccionado.
       if (_sortMode == SortMode.byPriority) {
+        // Ordenar por prioridad (1=alta)
         return a.prioridad.compareTo(b.prioridad);
       } else {
+        // Ordenar por ID de pedido (101)
         return a.id.compareTo(b.id);
       }
     });
+    // FIN LÓGICA DE ORDENAMIENTO
 
     return Scaffold(
       body: Stack(
@@ -338,7 +351,6 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
                 ),
               ),
 
-              // Vistas de Pedidos
               if (_viewMode == 'grid')
                 SliverPadding(
                   padding: EdgeInsets.all(16),
@@ -347,7 +359,7 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
                       crossAxisCount: 2,
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 0.85,
+                      childAspectRatio: 1.8,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -379,7 +391,7 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
               else
                 SliverToBoxAdapter(
                   child: RouteMapView(
-                    pedidos: sortedPedidos, // Pasa la lista ordenada
+                    pedidos: sortedPedidos, 
                     onToggle: toggleDeliveryStatus,
                   ),
                 ),
@@ -464,8 +476,8 @@ class _DriverScreenState extends State<DriverScreen> with TickerProviderStateMix
         size: 16,
       ),
       selected: isActive,
-      // CORRECCIÓN 2: Ocultar la marca de verificación
-      showCheckmark: false,
+      // CORRECCIÓN: Ocultar la marca de verificación
+      showCheckmark: false, 
       onSelected: (selected) {
         if (selected) {
           setState(() => _sortMode = mode);
@@ -502,9 +514,11 @@ class _RouteMapViewState extends State<RouteMapView> {
 
   // Lógica de posición (usa la lista original para posiciones fijas)
   Offset _calculatePositionForPedido(Pedido pedido, int totalOriginal) {
+    // Busca la posición del pedido por ID en la lista original (pedidosSimulados)
     final originalIndex = pedidosSimulados.indexWhere((p) => p.id == pedido.id);
     final positionIndex = originalIndex.isNegative ? 0 : originalIndex;
 
+    // Fórmula para posicionar los nodos en un patrón espiral/circular
     final angle = (positionIndex / totalOriginal) * 2 * math.pi + (positionIndex * 0.5);
     final radius = 100.0 + (positionIndex * 40.0);
     final centerX = 200.0;
@@ -561,10 +575,10 @@ class _RouteMapViewState extends State<RouteMapView> {
                   ),
                   // Pintor de Rutas (usa la lista ORDENADA)
                   CustomPaint(
-                    painter: RouteMapPainter(widget.pedidos), // Pasa la lista ordenada
+                    painter: RouteMapPainter(widget.pedidos), 
                     child: Stack(
                       children: [
-                        // Nodos (usa la lista ORDENADA para el 'z-index' implícito)
+                        // Nodos (usa la lista ORDENADA)
                         ...widget.pedidos.map((pedido) {
                           // Calcula la posición FIJA
                           final position = _calculatePositionForPedido(pedido, totalOriginal);
@@ -754,7 +768,8 @@ class _RouteMapViewState extends State<RouteMapView> {
                 onClose: () => setState(() => _selectedPedidoId = null),
                 onToggleStatus: () {
                   widget.onToggle(_selectedPedidoId!);
-                  setState(() => _selectedPedidoId = null);
+                  // Forzar a cerrar el panel después de la acción.
+                  setState(() => _selectedPedidoId = null); 
                 },
               ),
             ),
@@ -769,8 +784,7 @@ class RouteMapPainter extends CustomPainter {
 
   RouteMapPainter(this.pedidos);
 
-  // CORRECCIÓN 1: Lógica de posición COPIADA de _RouteMapViewState
-  // Ahora el pintor sabe la posición FIJA correcta de cada nodo.
+  // Lógica de posición COPIADA de _RouteMapViewState para mantener los nodos fijos.
   Offset _calculatePositionForPedido(Pedido pedido, int totalOriginal) {
     final originalIndex = pedidosSimulados.indexWhere((p) => p.id == pedido.id);
     final positionIndex = originalIndex.isNegative ? 0 : originalIndex;
@@ -800,9 +814,10 @@ class RouteMapPainter extends CustomPainter {
       // Calcula la posición FIJA del pedido actual
       final position = _calculatePositionForPedido(pedido, totalOriginal);
       
+      // ESTE ES EL COLOR Y OPACIDAD DE LAS ARISTAS
       paint.color = pedido.isDelivered 
         ? Colors.green.withOpacity(0.5) 
-        : Colors.grey.withOpacity(0.3);
+        : Colors.grey.withOpacity(0.4);
       
       if (i == 0) {
         // Conecta INICIO con el primer pedido de la lista ORDENADA
@@ -1428,45 +1443,50 @@ class CelebrationOverlay extends StatelessWidget {
       child: FadeTransition(
         opacity: controller.drive(CurveTween(curve: Curves.easeIn)),
         child: Container(
+          // Color de fondo animado
           color: Colors.green.withOpacity(0.3 * controller.value),
           child: Center(
             child: ScaleTransition(
+              // Animación de escala para el conjunto
               scale: controller.drive(
                 Tween<double>(begin: 0.5, end: 1.5).chain(
                   CurveTween(curve: Curves.elasticOut),
                 ),
               ),
-              child: RotationTransition(
-                turns: controller.drive(
-                  Tween<double>(begin: 0, end: 0.5).chain(
-                    CurveTween(curve: Curves.easeInOut),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
+              // NO aplicamos RotationTransition aquí
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Aplicamos RotationTransition SÓLO al Icono de estrella
+                  RotationTransition(
+                    turns: controller.drive(
+                      Tween<double>(begin: 0, end: 0.5).chain(
+                        CurveTween(curve: Curves.easeInOut),
+                      ),
+                    ),
+                    child: Icon(
                       Icons.star,
                       color: Colors.amber,
                       size: 150,
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      '¡Ruta Completada!',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black54,
-                            blurRadius: 10,
-                          )
-                        ]
-                      ),
+                  ),
+                  SizedBox(height: 10),
+                  // El texto se mantiene estático y legible
+                  Text(
+                    '¡Ruta Completada!',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 10,
+                        )
+                      ]
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
